@@ -1,0 +1,375 @@
+functions:
+  greeter:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4
+      memory: 40m
+    requests:
+      cpu: 4
+      memory: 20m
+  greeter_CPU0.5_Mem_1024.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 1024.0m
+    requests:
+      cpu: 0.5
+      memory: 1024.0m
+  greeter_CPU0.5_Mem_1024.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 1024.0m
+    requests:
+      cpu: 0.5
+      memory: 1024.0m
+  greeter_CPU0.5_Mem_1024.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 1024.0m
+    requests:
+      cpu: 0.5
+      memory: 1024.0m
+  greeter_CPU0.5_Mem_16384.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 16384.0m
+    requests:
+      cpu: 0.5
+      memory: 16384.0m
+  greeter_CPU0.5_Mem_16384.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 16384.0m
+    requests:
+      cpu: 0.5
+      memory: 16384.0m
+  greeter_CPU0.5_Mem_16384.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 16384.0m
+    requests:
+      cpu: 0.5
+      memory: 16384.0m
+  greeter_CPU0.5_Mem_248.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 248.0m
+    requests:
+      cpu: 0.5
+      memory: 248.0m
+  greeter_CPU0.5_Mem_248.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 248.0m
+    requests:
+      cpu: 0.5
+      memory: 248.0m
+  greeter_CPU0.5_Mem_248.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 0.5
+      memory: 248.0m
+    requests:
+      cpu: 0.5
+      memory: 248.0m
+  greeter_CPU16.0_Mem_1024.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 1024.0m
+    requests:
+      cpu: 16.0
+      memory: 1024.0m
+  greeter_CPU16.0_Mem_1024.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 1024.0m
+    requests:
+      cpu: 16.0
+      memory: 1024.0m
+  greeter_CPU16.0_Mem_1024.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 1024.0m
+    requests:
+      cpu: 16.0
+      memory: 1024.0m
+  greeter_CPU16.0_Mem_16384.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 16384.0m
+    requests:
+      cpu: 16.0
+      memory: 16384.0m
+  greeter_CPU16.0_Mem_16384.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 16384.0m
+    requests:
+      cpu: 16.0
+      memory: 16384.0m
+  greeter_CPU16.0_Mem_16384.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 16384.0m
+    requests:
+      cpu: 16.0
+      memory: 16384.0m
+  greeter_CPU16.0_Mem_248.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 248.0m
+    requests:
+      cpu: 16.0
+      memory: 248.0m
+  greeter_CPU16.0_Mem_248.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 248.0m
+    requests:
+      cpu: 16.0
+      memory: 248.0m
+  greeter_CPU16.0_Mem_248.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 16.0
+      memory: 248.0m
+    requests:
+      cpu: 16.0
+      memory: 248.0m
+  greeter_CPU32.0_Mem_1024.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 1024.0
+    requests:
+      cpu: 32.0
+      memory: 1024.0
+  greeter_CPU32.0_Mem_1024.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 1024.0
+    requests:
+      cpu: 32.0
+      memory: 1024.0
+  greeter_CPU32.0_Mem_1024.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 1024.0
+    requests:
+      cpu: 32.0
+      memory: 1024.0
+  greeter_CPU32.0_Mem_16384.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 16384.0
+    requests:
+      cpu: 32.0
+      memory: 16384.0
+  greeter_CPU32.0_Mem_16384.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 16384.0
+    requests:
+      cpu: 32.0
+      memory: 16384.0
+  greeter_CPU32.0_Mem_16384.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 16384.0
+    requests:
+      cpu: 32.0
+      memory: 16384.0
+  greeter_CPU32.0_Mem_248.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 248.0
+    requests:
+      cpu: 32.0
+      memory: 248.0
+  greeter_CPU32.0_Mem_248.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 248.0
+    requests:
+      cpu: 32.0
+      memory: 248.0
+  greeter_CPU32.0_Mem_248.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 32.0
+      memory: 248.0
+    requests:
+      cpu: 32.0
+      memory: 248.0
+  greeter_CPU4.0_Mem_1024.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 1024.0m
+    requests:
+      cpu: 4.0
+      memory: 1024.0m
+  greeter_CPU4.0_Mem_1024.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 1024.0m
+    requests:
+      cpu: 4.0
+      memory: 1024.0m
+  greeter_CPU4.0_Mem_1024.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 1024.0m
+    requests:
+      cpu: 4.0
+      memory: 1024.0m
+  greeter_CPU4.0_Mem_16384.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 16384.0m
+    requests:
+      cpu: 4.0
+      memory: 16384.0m
+  greeter_CPU4.0_Mem_16384.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 16384.0m
+    requests:
+      cpu: 4.0
+      memory: 16384.0m
+  greeter_CPU4.0_Mem_16384.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 16384.0m
+    requests:
+      cpu: 4.0
+      memory: 16384.0m
+  greeter_CPU4.0_Mem_248.0_GPU1:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 248.0m
+    requests:
+      cpu: 4.0
+      memory: 248.0m
+  greeter_CPU4.0_Mem_248.0_GPU2:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 248.0m
+    requests:
+      cpu: 4.0
+      memory: 248.0m
+  greeter_CPU4.0_Mem_248.0_GPU3:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4.0
+      memory: 248.0m
+    requests:
+      cpu: 4.0
+      memory: 248.0m
+provider:
+  gateway: http://127.0.0.1:8080
+  name: openfaas
+version: 1.0

@@ -1,1 +1,7 @@
 .vscode
+
+template
+build
+.secrets
+
+.ipynb_checkpoints
