@@ -4,4 +4,4 @@ def handle(req):
         req (str): request body
     """
 
-    return req
+    return f"Hello! I've received {len(req)} bytes from you"
