@@ -5,3 +5,5 @@ build
 .secrets
 
 .ipynb_checkpoints
+
+*_gen.yml

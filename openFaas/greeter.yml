@@ -1,0 +1,16 @@
+functions:
+  greeter:
+    handler: ./greeter
+    image: greeter:latest
+    lang: python3
+    limits:
+      cpu: 4
+      memory: 40m
+    requests:
+      cpu: 4
+      memory: 20m
+provider:
+  gateway: http://127.0.0.1:8080
+  name: openfaas
+version: 1.0
+  
