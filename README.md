@@ -34,14 +34,43 @@ This should return Echo to the terminal
 
 ### FaaSterConfig
 
-Still in progress, but run
+This python script will generate a set of configurations, save them in a _gen.yml file, then call the `faas-cli local-run` command to test that function locally. Future plans involve running this in an openFaas cluster and expanding what nodeTypes are available
 
 ```bash
 cd FaaSterConfig
-python3 FaaSterConfig.py
+python3 FaaSterConfig.py ../openFaas/matmul.yml -c 1 6 12 -nt NoGPU -d 5000
 ```
 
-To generate a new config file (openfaas .yml files) based on an existing function which will duplicate that function many times with different configurations. 
+This on in particular will run the matmul function on 1 6 and 12 cpus (default memory configs, check `python3 FaaSterConfig.py --help` for more options), on only one node type (no gpu since its local) and will send the function an input of "5000"
 
-Eventually, this will automatically run these configurations and report back the time and cost and provide an optimal set of configurations to choose from.
+The output will look like this: 
+
+```txt
+Generated 9 configurations, testing now
+duration of matmul_CPU6.0_Mem_16384.0_NoGPU: 4.616424s
+duration of matmul_CPU6.0_Mem_248.0_NoGPU: 4.061081s
+duration of matmul_CPU6.0_Mem_1024.0_NoGPU: 4.169447s
+duration of matmul_CPU1.0_Mem_1024.0_NoGPU: 26.475706s
+duration of matmul_CPU1.0_Mem_16384.0_NoGPU: 26.474107s
+duration of matmul_CPU1.0_Mem_248.0_NoGPU: 26.074201s
+duration of matmul_CPU12.0_Mem_1024.0_NoGPU: 2.370397s
+duration of matmul_CPU12.0_Mem_248.0_NoGPU: 2.400005s
+duration of matmul_CPU12.0_Mem_16384.0_NoGPU: 2.493132s
++----+-------+-------+---------------+----------+
+|    |   CPU |   Mem | NodeTypeStr   |     time |
+|----+-------+-------+---------------+----------|
+|  0 |    12 |  1024 | NoGPU         |  2.3704  |
+|  1 |    12 |   248 | NoGPU         |  2.40001 |
+|  2 |    12 | 16384 | NoGPU         |  2.49313 |
+|  3 |     6 |   248 | NoGPU         |  4.06108 |
+|  4 |     6 |  1024 | NoGPU         |  4.16945 |
+|  5 |     6 | 16384 | NoGPU         |  4.61642 |
+|  6 |     1 |   248 | NoGPU         | 26.0742  |
+|  7 |     1 | 16384 | NoGPU         | 26.4741  |
+|  8 |     1 |  1024 | NoGPU         | 26.4757  |
++----+-------+-------+---------------+----------+
+Top Recommendation config: CPU :12.0, Mem: 1024.0, NodeType: NoGPU which had a final time of: 2.370397s
+```
+
+
 
