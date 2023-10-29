@@ -1,5 +1,7 @@
 # FaaSterConfig
-Automatic resource configuration generator for FaaS functions. 
+Automatic resource configuration generator for FaaS functions. Goal is to provide a way for a developer to automatically find the best (lowest time & cheapest cost) configurations for their function with various inputs. 
+
+![Architecture](docs/Architecture.png)
 
 This repo contains jupyter notebooks, openFaas functions, and script(s) to generate configs and interact with OpenFaas to determine which config is the best for a given function 
 
