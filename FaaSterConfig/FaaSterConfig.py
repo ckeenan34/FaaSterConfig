@@ -109,9 +109,10 @@ def generateFunctionConfigs(funcName, config_space=None, stackPath='../openFaas/
     for _, row in doe.iterrows():
         name = f"{funcName}-cpu{row.CPU}-mem-{row.Mem}-{row.NodeTypeStr}".replace(".", "x").lower()
         config = funcConfig.copy()
+        memUnit = "m" if kwargs.get("local", False) else "Mi"
         config['limits'] = {
             'cpu': row.CPU,
-            "memory": f"{row.Mem}m"
+            "memory": f"{row.Mem}{memUnit}"
         }
         config['requests'] = config['limits'].copy()
         functions[name] = config
@@ -204,21 +205,25 @@ def runLocalFunction(funcName=None, data="100", stackYml=None, port=4500, MAXBUF
     print(f"duration of {funcName}: {duration}s")
     return duration
 
-def runFunction(funcName=None, baseUrl=None, data="100", verbose=False, **kwargs):
-    assert funcName is not None, "funcName required"
-    assert baseUrl is not None, "baseUrl required"
+def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
     # TODO get time from faas-cli logs instead of response.elapsed
     if verbose:
         print(datetime.datetime.now())
-    
+        print(f"using data: {data}")
+
     url = f"{baseUrl}/function/{funcName}"
     response = requests.post(url, data=data, timeout=kwargs.get('timeout', 60))
     
+    if not response.ok:
+        print(response.content)
+        return None
+    elif verbose:
+        print(response.content)
+    
     return response.elapsed.total_seconds()
 
-def getTimes(doe, data="1000", verbose=False, **kwargs):
-    if verbose:
-        print(f"Getting times use data: {data}")
+def getTimes(doe, **kwargs):
+    print(f"Getting times use data: {kwargs.get('data')}")
 
     # delete keys to avoid duplicate args issue
     kwargs = delKeys(kwargs, ['funcName'])
@@ -231,7 +236,7 @@ def getTimes(doe, data="1000", verbose=False, **kwargs):
     
     getTime = getLocalTime if kwargs.get('local', False) else getRemoteTime
 
-    results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=8)
+    results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=12)
     doe['time'] = results
     return doe
 
@@ -258,6 +263,7 @@ def parseArgs():
                         help=f"Will only run the function locally using faas-cli local-run")
     parser.add_argument("-to", "--timeout", action=argparse.BooleanOptionalAction,
                         help=f"How long a function request will wait until existing and discounting it")
+
     args = parser.parse_args()
 
     config_space = {
@@ -332,4 +338,6 @@ def main():
     main(args)
 
 if __name__ == "__main__":
+    import warnings
+    warnings.filterwarnings("ignore")
     main()
