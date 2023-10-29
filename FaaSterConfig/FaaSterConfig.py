@@ -263,6 +263,8 @@ def parseArgs():
                         help=f"Will only run the function locally using faas-cli local-run")
     parser.add_argument("-to", "--timeout", action=argparse.BooleanOptionalAction,
                         help=f"How long a function request will wait until existing and discounting it")
+    parser.add_argument("-dry", "--dry-run", action=argparse.BooleanOptionalAction,
+                    help=f"Dry run, will generate the stack_gen.yml file but will not run any function")
 
     args = parser.parse_args()
 
@@ -317,13 +319,16 @@ def remoteMain(args):
     doe, stack = generateFunctionConfigs(**args)
     writeStack(stack, args['genStackPath'])
     print(f"Generated {len(doe)} configurations, testing on remote now")
-    up(args['genStackPath'], **args)
-    
-    try:
-        doe = getTimes(doe, **args)
-    finally:
-        print("not removing functions for now")
-        # remove(args['genStackPath'], **args)
+    if not args.get("dry_run"):
+        up(args['genStackPath'], **args)
+        
+        try:
+            doe = getTimes(doe, **args)
+        finally:
+            print("not removing functions for now")
+            # remove(args['genStackPath'], **args)
+    else:
+        doe["time"] = None
     doe.sort_values(by=["time"], inplace=True)
     print(tabulate(doe[['CPU','Mem','NodeTypeStr', 'time']].reset_index(drop=True), headers='keys', tablefmt='psql'))
 
