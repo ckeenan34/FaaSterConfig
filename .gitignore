@@ -7,3 +7,4 @@ build
 .ipynb_checkpoints
 
 *_gen.yml
+**/__pycache__/*

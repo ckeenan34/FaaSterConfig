@@ -15,18 +15,20 @@ exit 1
 import os
 import numpy as np
 import random
+import requests
 import yaml
 from concurrent.futures import ThreadPoolExecutor  # or ProcessPoolExecutor if you want to use multiple processes
 from doepy import build
 import subprocess
 import re
 from tabulate import tabulate
+import datetime
 
 
 global_config_space = {
-    'CPU':[.5,4,16],
-    'Mem':[248, 1024, 1024*16],
-    'NodeType':["GPU1", "GPU2", "GPU3"]
+    'CPU': [.5,1,2],
+    'Mem': [248, 1024, 1024*2],
+    'NodeType': ["NoGPU"]#["GPU1", "GPU2", "GPU3"]
 }
 
 # Helpers
@@ -78,31 +80,12 @@ def writeStack(data, path='../openFaas/stack.yml'):
     with open(path, 'w') as file:
         yaml.dump(data, file, default_flow_style=False)
 
-def getConfigResultsFaked(row, sigma=.1):
-    """
-    Generate faked configuration results based on input row data.
-
-    This function generates synthetic configuration results by using random values based on the input data
-    in the 'row' argument. It can be useful for testing and simulation purposes.
-
-    Parameters:
-    row (pd.Series): A Pandas Series containing the input data used to generate the synthetic results.
-    sigma (float, optional): The standard deviation for random value generation (default is 0.1).
-
-    Returns:
-    float: A synthetic configuration result based on the input data.
-
-    Example:
-    >>> import pandas as pd
-    >>> data = {'i': 42, 'CPU': 4, 'Mem': 16, 'NodeType': 'A'}
-    >>> row = pd.Series(data)
-    >>> result = getConfigResultsFaked(row, sigma=0.2)
-    >>> print(result)
-    # Output is a synthetic configuration result based on the input data and randomness.
-    """
-    random.seed(row.i)
-    b = random.normalvariate(.5, sigma)
-    return b + random.normalvariate(1/(row.CPU * 3 + row.Mem*1.5 * row.NodeType), sigma)
+def delKeys(dict, keys):
+    dict = dict.copy()
+    for k in keys:
+        if k in dict:
+            del dict[k]
+    return dict
 
 def genConfigs(config_space=None):
     if not config_space:
@@ -124,7 +107,7 @@ def generateFunctionConfigs(funcName, config_space=None, stackPath='../openFaas/
     doe = genConfigs(config_space)
     funcNames = []
     for _, row in doe.iterrows():
-        name = f"{funcName}_CPU{row.CPU}_Mem_{row.Mem}_{row.NodeTypeStr}"
+        name = f"{funcName}-cpu{row.CPU}-mem-{row.Mem}-{row.NodeTypeStr}".replace(".", "x").lower()
         config = funcConfig.copy()
         config['limits'] = {
             'cpu': row.CPU,
@@ -138,7 +121,54 @@ def generateFunctionConfigs(funcName, config_space=None, stackPath='../openFaas/
     stack['functions'] = functions
     return doe, stack
 
-def runFunction(funcName, data="100", stackYml=None, port=4500, MAXBUF=120, verbose=False):
+def imageExists(image):
+    """Checks if an image exists according to docker"""
+    cmd = f"docker manifest inspect {image} > /dev/null ; echo $?"
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    (out, err) = process.communicate()
+    if err:
+        print(err)
+    return out.strip() == "0"
+
+def imagesExist(stackPath):
+    """Checks if all images exist in the stack.yml file"""
+    stack = readStack(stackPath)
+    return all(map(imageExists, set(v['image'] for k,v in stack['functions'].items())))
+
+def up(stackYml, verbose=False, **kwargs):
+    """Deploys all functions in a stack.yml file to an OpenFaas cluster"""
+
+    subcmd = "deploy" if imagesExist(stackYml) else "up"
+    cmd = f"cd {os.path.dirname(stackYml)}; faas-cli {subcmd} -f {stackYml}"
+    if verbose: 
+        print(f"running command: {cmd}")
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = None
+    for line in process.stdout:
+        if verbose:
+            print(line)
+        if match:=re.search("Deployed. (\d+) Accepted.", line):
+            result = f"Deployed {match.groups()[0]}"
+        if match:=re.search("failed to deploy", line):
+            raise Exception(f"Failed: {line}")
+    print(f"up completed for {stackYml}")
+    
+    return result
+
+def remove(stackYml, verbose=False):
+    """Deletes all functions in a stack.yml file to an OpenFaas cluster"""
+
+    cmd = f"cd {os.path.dirname(stackYml)}; faas-cli rm -f {stackYml}"
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for line in process.stdout:
+        if verbose:
+            print(line)
+
+    return True
+
+def runLocalFunction(funcName=None, data="100", stackYml=None, port=4500, MAXBUF=120, verbose=False, **kwargs):
+    assert funcName is not None, "funcName required"
+
     if not stackYml: 
         # Assume stack.yml file is same name as function
         stackYml = f"../openFaas/{funcName}.yml"
@@ -174,26 +204,43 @@ def runFunction(funcName, data="100", stackYml=None, port=4500, MAXBUF=120, verb
     print(f"duration of {funcName}: {duration}s")
     return duration
 
-def getTime(funcName, **kwargs):
-    return runFunction(funcName, **kwargs)
+def runFunction(funcName=None, baseUrl=None, data="100", verbose=False, **kwargs):
+    assert funcName is not None, "funcName required"
+    assert baseUrl is not None, "baseUrl required"
+    # TODO get time from faas-cli logs instead of response.elapsed
+    if verbose:
+        print(datetime.datetime.now())
+    
+    url = f"{baseUrl}/function/{funcName}"
+    response = requests.post(url, data=data, timeout=kwargs.get('timeout', 60))
+    
+    return response.elapsed.total_seconds()
 
-def getTimes(doe, stackYml="../openFaas/matmul_gen.yml", data="1000", verbose=False, **kwargs):
+def getTimes(doe, data="1000", verbose=False, **kwargs):
     if verbose:
         print(f"Getting times use data: {data}")
 
-    def wrapGetTime(row):
-        return getTime(row.funcName, port=(4500+row.i), data=data, stackYml=stackYml, verbose=verbose)
+    # delete keys to avoid duplicate args issue
+    kwargs = delKeys(kwargs, ['funcName'])
 
-    results = executeThreaded(wrapGetTime, doe.itertuples(index=False), max_workers=8)
+    def getLocalTime(row):
+        return runLocalFunction(row.funcName, port=(4500+row.i), **kwargs)
+
+    def getRemoteTime(row):
+        return runFunction(row.funcName, kwargs['url'], **kwargs)
+    
+    getTime = getLocalTime if kwargs.get('local', False) else getRemoteTime
+
+    results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=8)
     doe['time'] = results
     return doe
 
 def parseArgs():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("stack", type=str,
+    parser.add_argument("stackPath", type=str,
                         help="The .yml file with the initial OpenFaaS function definition")
-    parser.add_argument("-f", "--func", type=str,
+    parser.add_argument("-f", "--funcName", type=str,
                         help="The function within the .yml file to optimize. Defaults to first function in stack.yml")
     parser.add_argument("-o", "--outStack", type=str,
                         help="The output .yml path where the configurations will be stored. Defaults to <stack>_gen.yml")
@@ -203,10 +250,14 @@ def parseArgs():
                         help=f"The range of memory values to test for.Defaults to {global_config_space['Mem']}")
     parser.add_argument("-nt", "--nodeType", type=str, nargs="+",
                         help=f"The list of NodeTypes to test for. Defaults to {global_config_space['NodeType']}")
-    parser.add_argument("-d", "--data", type=str,
+    parser.add_argument("-d", "--data", type=str, default="1000",
                         help=f"The input data to pass to the function to get the estimated runtime")
     parser.add_argument("-v", "--verbose", action=argparse.BooleanOptionalAction,
                         help=f"Verbose output, helpful for debugging. Defaults to False")
+    parser.add_argument("-lc", "--local", action=argparse.BooleanOptionalAction,
+                        help=f"Will only run the function locally using faas-cli local-run")
+    parser.add_argument("-to", "--timeout", action=argparse.BooleanOptionalAction,
+                        help=f"How long a function request will wait until existing and discounting it")
     args = parser.parse_args()
 
     config_space = {
@@ -216,40 +267,34 @@ def parseArgs():
     }
 
     if not args.outStack:
-        head, tail = os.path.splitext(args.stack)
+        head, tail = os.path.splitext(args.stackPath)
         args.outStack = f"{head}_gen{tail}"
     elif os.path.isdir(args.outStack):
-        head, tail = os.path.splitext(os.path.basename(args.stack))
+        head, tail = os.path.splitext(os.path.basename(args.stackPath))
         args.outStack = os.path.join(args.outStack, f"{head}_gen{tail}")
 
-    stack = readStack(args.stack)
+    stack = readStack(args.stackPath)
     if not stack.get('functions', False):
-        return f"{args.stack} not valid"
+        return f"{args.stackPath} not valid"
 
-    if not args.func:
+    if not args.funcName:
         # Assume at least 1 function available in this stack
-        args.func = next(iter(stack['functions'].items()))[0]
+        args.funcName = next(iter(stack['functions'].items()))[0]
 
-    finalArgs =  {
-        "stackPath": args.stack,
+    finalArgs = vars(args) | {
         "genStackPath": args.outStack,
-        "funcName": args.func,
         "config_space": config_space,
-        "data": args.data or "1000",
-        "verbose": args.verbose or False
+        "url": stack.get("provider", {}).get("gateway", None)
     }
     if finalArgs['verbose']:
         print(f"finalArgs: {finalArgs}")
     return finalArgs
 
-def main():
-    # Get arguments 
-    args = parseArgs()
-
+def localMain(args):
     # Generate a new stack file with new configs
     doe, stack = generateFunctionConfigs(**args)
     writeStack(stack, args['genStackPath'])
-    print(f"Generated {len(doe)} configurations, testing now")
+    print(f"Generated {len(doe)} configurations, testing on local now")
 
     doe = getTimes(doe, stackYml=args['genStackPath'], **args)
     doe.sort_values(by=["time"], inplace=True)
@@ -257,10 +302,34 @@ def main():
 
     best = doe.iloc[0]
     print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s")
+    
+    # Clears up any docker instances
+    os.system("docker stop $(docker ps | grep fwatchdog | awk '{print $1}') > /dev/null 2>&1")
     return args, doe, stack
+
+def remoteMain(args):
+    doe, stack = generateFunctionConfigs(**args)
+    writeStack(stack, args['genStackPath'])
+    print(f"Generated {len(doe)} configurations, testing on remote now")
+    up(args['genStackPath'], **args)
+    
+    try:
+        doe = getTimes(doe, **args)
+    finally:
+        print("not removing functions for now")
+        # remove(args['genStackPath'], **args)
+    doe.sort_values(by=["time"], inplace=True)
+    print(tabulate(doe[['CPU','Mem','NodeTypeStr', 'time']].reset_index(drop=True), headers='keys', tablefmt='psql'))
+
+    best = doe.iloc[0]
+    print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s")
+    return args, doe, stack
+
+def main():
+    # Get arguments
+    args = parseArgs()
+    main = localMain if args.get('local', False) else remoteMain
+    main(args)
 
 if __name__ == "__main__":
     main()
-    # Clears up any docker instances
-    os.system("docker stop $(docker ps | grep fwatchdog | awk '{print $1}') > /dev/null 2>&1")
-

@@ -1,0 +1,1 @@
+echo $PASSWORD | faas-cli login --username admin --password-stdin -g http://$OPENFAAS_URL

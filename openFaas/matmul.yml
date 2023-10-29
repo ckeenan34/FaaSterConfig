@@ -1,10 +1,10 @@
 version: 1.0
 provider:
   name: openfaas
-  gateway: http://127.0.0.1:8080
+  gateway: http://k8s-openfaas-gatewaye-67e167a914-178e01451d9f2717.elb.us-east-1.amazonaws.com:8080
 functions:
   matmul:
     lang: python3
     handler: ./matmul
-    image: matmul:latest
+    image: keenanc/matmul:latest
 
