@@ -14,7 +14,6 @@ exit 1
 
 import os
 import numpy as np
-import random
 import requests
 import yaml
 from concurrent.futures import ThreadPoolExecutor  # or ProcessPoolExecutor if you want to use multiple processes
@@ -212,7 +211,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
         print(f"using data: {data}")
 
     url = f"{baseUrl}/function/{funcName}"
-    response = requests.post(url, data=data, timeout=kwargs.get('timeout', 60))
+    response = requests.post(url, data=data, timeout=kwargs.get('timeout', kwargs.get("timeout", 60)))
     
     if not response.ok:
         print(response.content)
@@ -223,7 +222,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
     return response.elapsed.total_seconds()
 
 def getTimes(doe, **kwargs):
-    print(f"Getting times use data: {kwargs.get('data')}")
+    print(f"Getting times using input: {kwargs.get('data')}")
 
     # delete keys to avoid duplicate args issue
     kwargs = delKeys(kwargs, ['funcName'])
@@ -236,8 +235,25 @@ def getTimes(doe, **kwargs):
     
     getTime = getLocalTime if kwargs.get('local', False) else getRemoteTime
 
-    results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=12)
+    results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=120)
     doe['time'] = results
+    return doe
+
+def getCost(doe, **kwargs):
+    """Gets the cost given the runtime of the function assuming aws fargate on linux is used """
+    cpuPerHour = kwargs.get('cpuPerHour', 0.04048)
+    memPerHour = kwargs.get('memPerHour', 0.004445)
+
+    def configCostPerHour(row):
+        return row.CPU*cpuPerHour + row.Mem * memPerHour
+    
+    def funcCost(row):
+        if row.time is not None:
+            return (row.costPerHour*row.time)/3600
+        return np.inf
+
+    doe['costPerHour'] = doe.apply(configCostPerHour, axis=1)
+    doe['cost'] = doe.apply(funcCost, axis=1)
     return doe
 
 def parseArgs():
@@ -247,7 +263,7 @@ def parseArgs():
                         help="The .yml file with the initial OpenFaaS function definition")
     parser.add_argument("-f", "--funcName", type=str,
                         help="The function within the .yml file to optimize. Defaults to first function in stack.yml")
-    parser.add_argument("-o", "--outStack", type=str,
+    parser.add_argument("-os", "--outStack", type=str,
                         help="The output .yml path where the configurations will be stored. Defaults to <stack>_gen.yml")
     parser.add_argument("-c", "--cpu", type=float, nargs="+",
                         help=f"The range of cpu values to test for. Defaults to {global_config_space['CPU']}")
@@ -261,10 +277,12 @@ def parseArgs():
                         help=f"Verbose output, helpful for debugging. Defaults to False")
     parser.add_argument("-lc", "--local", action=argparse.BooleanOptionalAction,
                         help=f"Will only run the function locally using faas-cli local-run")
-    parser.add_argument("-to", "--timeout", action=argparse.BooleanOptionalAction,
+    parser.add_argument("-to", "--timeout", type=float,
                         help=f"How long a function request will wait until existing and discounting it")
     parser.add_argument("-dry", "--dry-run", action=argparse.BooleanOptionalAction,
-                    help=f"Dry run, will generate the stack_gen.yml file but will not run any function")
+                        help=f"Dry run, will generate the stack_gen.yml file but will not run any function")
+    parser.add_argument("-tf", "--tablefmt", type=str,
+                        help=f"Formats the output table in any suported format by the tabulate function. Defaults to psql")
 
     args = parser.parse_args()
 
@@ -330,10 +348,15 @@ def remoteMain(args):
     else:
         doe["time"] = None
     doe.sort_values(by=["time"], inplace=True)
-    print(tabulate(doe[['CPU','Mem','NodeTypeStr', 'time']].reset_index(drop=True), headers='keys', tablefmt='psql'))
+    doe = getCost(doe)
+    res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour']].reset_index(drop=True)
+    if args.get("tablefmt", '') == 'csv':
+        print(res.to_csv(index=False))
+    else:
+        print(tabulate(res, headers='keys', tablefmt=args.get('tablefmt', 'psql'), showindex=False))
 
     best = doe.iloc[0]
-    print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s")
+    print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s and expect cost of {best.cost}")
     return args, doe, stack
 
 def main():
