@@ -240,12 +240,15 @@ def getTimes(doe, **kwargs):
     return doe
 
 def getCost(doe, **kwargs):
-    """Gets the cost given the runtime of the function assuming aws fargate on linux is used """
+    """
+    Gets the cost given the runtime of the function assuming aws fargate on linux is used 
+     https://aws.amazon.com/fargate/pricing/ 
+    """
     cpuPerHour = kwargs.get('cpuPerHour', 0.04048)
     memPerHour = kwargs.get('memPerHour', 0.004445)
 
     def configCostPerHour(row):
-        return row.CPU*cpuPerHour + row.Mem * memPerHour
+        return row.CPU*cpuPerHour + (row.Mem * memPerHour/1024)
     
     def funcCost(row):
         if row.time is not None:
