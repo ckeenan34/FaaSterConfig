@@ -21,16 +21,15 @@ from doepy import build
 import subprocess
 import re
 from tabulate import tabulate
-import datetime
+from datetime import datetime, timezone
+import time
 
-
+# region Helpers
 global_config_space = {
     'CPU': [.5,1,2],
     'Mem': [248, 1024, 1024*2],
     'NodeType': ["NoGPU"]#["GPU1", "GPU2", "GPU3"]
 }
-
-# Helpers
 def executeThreaded(func, args, max_workers=4):
     """Executes a function over a list of arguments in a threaded way 
 
@@ -86,6 +85,118 @@ def delKeys(dict, keys):
             del dict[k]
     return dict
 
+def waitForResult(func, expected_result, timeout=120, poll_interval=1, *args, **kwargs):
+    start_time = time.time()
+
+    while True:
+        result = func(*args, **kwargs)
+        if result == expected_result:
+            return result
+
+        # print(f"waiting result: {result} doesn't match expected: {expected_result}")
+        elapsed_time = time.time() - start_time
+
+        if timeout is not None and elapsed_time >= timeout:
+            raise TimeoutError(f"Function did not return the expected result {expected_result} within {timeout} seconds. Last result: {result}")
+
+        time.sleep(poll_interval)
+
+def runShell(cmd, handleLine=None):
+    process = subprocess.Popen(cmd, bufsize=120, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if not handleLine:
+        (out, err) = process.communicate()
+        if err:
+            print(err)
+        return out.strip()
+    else: 
+        try:
+            for line in process.stdout:
+                if line and (r:=handleLine(line)):
+                    return r
+        finally:
+            if not process.poll():
+                process.kill()
+
+def imageExists(image):
+    """Checks if an image exists according to docker"""
+    out = runShell(f"docker manifest inspect {image} > /dev/null ; echo $?")
+    return out.strip() == "0"
+
+def imagesExist(stackPath):
+    """Checks if all images exist in the stack.yml file"""
+    stack = readStack(stackPath)
+    return all(map(imageExists, set(v['image'] for k,v in stack['functions'].items())))
+
+def up(stackYml, funcs, verbose=False, waitUntilReady=False, **kwargs):
+    """Deploys functions in a stack.yml file to an OpenFaas cluster"""
+
+    subcmd = "deploy" if imagesExist(stackYml) else "up"
+    cmd = f"cd {os.path.dirname(stackYml)}; faas-cli {subcmd} -f {stackYml}"
+    if funcs:
+        cmd += f" --regex \"({'|'.join(funcs)})\""
+    if verbose: 
+        print(f"running command: {cmd}")
+
+    def handleLine(line):
+        if verbose:
+            print(line)
+        if match:=re.search("Deployed. (\d+) Accepted.", line):
+            return f"Deployed {match.groups()[0]}"
+        if match:=re.search("failed to deploy", line):
+            raise Exception(f"Failed: {line}")
+        
+    result = runShell(cmd, handleLine)
+    # print(f"result before waiting: {result}")
+    if waitUntilReady:
+        # wait until each function is up
+        for funcName in funcs:
+            def functionStatus():
+                return runShell(f"faas-cli describe -f {kwargs['genStackPath']} {funcName} | awk '/Status:/ {{print $2}}'").strip()
+            try:
+                # print(f"waiting for {funcName} to be Ready")
+                waitForResult(functionStatus, "Ready", kwargs.get('timeout', 120))
+            except TimeoutError as ex:
+                return None
+
+    print(f"up completed for {stackYml} {' '.join(funcs) if funcs else ''}")
+
+    return result
+
+def remove(stackYml, funcs, verbose=False, **kwargs):
+    """Deletes functions in a stack.yml file to an OpenFaas cluster"""
+
+    cmd = f"cd {os.path.dirname(stackYml)}; faas-cli rm -f {stackYml}"
+    if funcs:
+      cmd += f" --regex \"({'|'.join(funcs)})\""
+    if verbose:
+        print("Running: " + cmd)
+    
+    if (out:=runShell(cmd)) and verbose:
+        print(out)
+
+    return True
+
+def getCost(doe, **kwargs):
+    """
+    Gets the cost given the runtime of the function assuming aws fargate on linux is used 
+     https://aws.amazon.com/fargate/pricing/ 
+    """
+    cpuPerHour = kwargs.get('cpuPerHour', 0.04048)
+    memPerHour = kwargs.get('memPerHour', 0.004445)
+
+    def configCostPerHour(row):
+        return row.CPU*cpuPerHour + (row.Mem * memPerHour/1024)
+    
+    def funcCost(row):
+        if row.time is not None:
+            return (row.costPerHour*row.time)/3600
+        return np.inf
+
+    doe['costPerHour'] = doe.apply(configCostPerHour, axis=1)
+    doe['cost'] = doe.apply(funcCost, axis=1)
+    return doe
+# endregion 
+
 def genConfigs(config_space=None):
     if not config_space:
         config_space = global_config_space
@@ -121,105 +232,40 @@ def generateFunctionConfigs(funcName, config_space=None, stackPath='../openFaas/
     stack['functions'] = functions
     return doe, stack
 
-def imageExists(image):
-    """Checks if an image exists according to docker"""
-    cmd = f"docker manifest inspect {image} > /dev/null ; echo $?"
-    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    (out, err) = process.communicate()
-    if err:
-        print(err)
-    return out.strip() == "0"
-
-def imagesExist(stackPath):
-    """Checks if all images exist in the stack.yml file"""
-    stack = readStack(stackPath)
-    return all(map(imageExists, set(v['image'] for k,v in stack['functions'].items())))
-
-def up(stackYml, verbose=False, **kwargs):
-    """Deploys all functions in a stack.yml file to an OpenFaas cluster"""
-
-    subcmd = "deploy" if imagesExist(stackYml) else "up"
-    cmd = f"cd {os.path.dirname(stackYml)}; faas-cli {subcmd} -f {stackYml}"
-    if verbose: 
-        print(f"running command: {cmd}")
-    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    result = None
-    for line in process.stdout:
-        if verbose:
-            print(line)
-        if match:=re.search("Deployed. (\d+) Accepted.", line):
-            result = f"Deployed {match.groups()[0]}"
-        if match:=re.search("failed to deploy", line):
-            raise Exception(f"Failed: {line}")
-    print(f"up completed for {stackYml}")
-    
-    return result
-
-def remove(stackYml, verbose=False):
-    """Deletes all functions in a stack.yml file to an OpenFaas cluster"""
-
-    cmd = f"cd {os.path.dirname(stackYml)}; faas-cli rm -f {stackYml}"
-    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    for line in process.stdout:
-        if verbose:
-            print(line)
-
-    return True
-
-def runLocalFunction(funcName=None, data="100", stackYml=None, port=4500, MAXBUF=120, verbose=False, **kwargs):
-    assert funcName is not None, "funcName required"
-
-    if not stackYml: 
-        # Assume stack.yml file is same name as function
-        stackYml = f"../openFaas/{funcName}.yml"
-
-    logFile = f"/tmp/openFaas/{funcName}.log"
-    os.makedirs(os.path.dirname(logFile), exist_ok=True)
-
-    cmd = f"cd {os.path.dirname(stackYml)}; faas-cli local-run {funcName} -f {stackYml} -p {port} --quiet 2>&1 | tee {logFile}"
-    if verbose:
-        print("running command: ")
-        print(cmd)
-    process = subprocess.Popen(cmd, bufsize=MAXBUF, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-    duration = None
-    for line in process.stdout:
-        if line:
-            if verbose:
-                print(line)
-            if re.search("Listening on port: 8080", line):
-                # TODO use requests and send payload from input 
-                command = f"curl http://0.0.0.0:{port} -X POST  --data '{data}' >/dev/null 2>&1"
-                if verbose:
-                    print(f"Running command: {command}")
-                os.system(command)
-            elif (match:= re.search("Duration: ((?:\d|.)+)s", line)):
-                duration = float(match.groups()[0])
-                break
-
-    if not process.poll():
-        process.kill()
-    # Ensure all subprocesses are killed for this function
-    os.system("""kill -9 $(ps -ef | grep -e "faas-cli local-run %s" -e "docker run --name %s" -e "run.*%s" | awk '{print $2}')""" % (funcName,funcName,funcName))
-    print(f"duration of {funcName}: {duration}s")
-    return duration
-
 def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
-    # TODO get time from faas-cli logs instead of response.elapsed
     if verbose:
-        print(datetime.datetime.now())
+        print(datetime.now())
         print(f"using data: {data}")
 
+    # deploy function 
+    if not up(kwargs['genStackPath'], [funcName], waitUntilReady=True, verbose=verbose, **kwargs):
+        print(f"{funcName} failed to deploy")
+        return None
+
+    # Run function 
+    start = datetime.now(timezone.utc)
     url = f"{baseUrl}/function/{funcName}"
-    response = requests.post(url, data=data, timeout=kwargs.get('timeout', kwargs.get("timeout", 60)))
+    # print(f"About to request {url} with {data}")
+    response = requests.post(url, data=data, timeout=kwargs.get('timeout', 120))
     
     if not response.ok:
-        print(response.content)
+        print(f"{funcName} Response code: {response.status_code}")
         return None
     elif verbose:
         print(response.content)
     
-    return response.elapsed.total_seconds()
+    # get duration from logs
+    def handleLine(line):
+        if verbose:
+            print(line)
+        if (match:= re.search("Duration: ((?:\d|.)+)s", line)):
+            return float(match.groups()[0])
+    duration = runShell(f"faas-cli logs {funcName} --since-time {start.isoformat()} -g {baseUrl}", handleLine)
+
+    remove(kwargs["genStackPath"], [funcName], verbose=verbose, **kwargs)
+    print(f"Duration {duration} for {funcName}")
+    return duration
+
 
 def getTimes(doe, **kwargs):
     print(f"Getting times using input: {kwargs.get('data')}")
@@ -228,36 +274,41 @@ def getTimes(doe, **kwargs):
     kwargs = delKeys(kwargs, ['funcName'])
 
     def getLocalTime(row):
-        return runLocalFunction(row.funcName, port=(4500+row.i), **kwargs)
+        # return runLocalFunction(row.funcName, port=(4500+row.i), **kwargs)
+        raise "Local run is no longer supported"
 
     def getRemoteTime(row):
         return runFunction(row.funcName, kwargs['url'], **kwargs)
     
     getTime = getLocalTime if kwargs.get('local', False) else getRemoteTime
 
-    results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=120)
+    results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=kwargs.get("concurrency", 30))
     doe['time'] = results
     return doe
 
-def getCost(doe, **kwargs):
-    """
-    Gets the cost given the runtime of the function assuming aws fargate on linux is used 
-     https://aws.amazon.com/fargate/pricing/ 
-    """
-    cpuPerHour = kwargs.get('cpuPerHour', 0.04048)
-    memPerHour = kwargs.get('memPerHour', 0.004445)
+def remoteMain(args):
+    doe, stack = generateFunctionConfigs(**args)
+    writeStack(stack, args['genStackPath'])
 
-    def configCostPerHour(row):
-        return row.CPU*cpuPerHour + (row.Mem * memPerHour/1024)
-    
-    def funcCost(row):
-        if row.time is not None:
-            return (row.costPerHour*row.time)/3600
-        return np.inf
+    print(f"Generated {len(doe)} configurations, testing on remote now")
+    if not args.get("dry_run"):        
+        try:
+            doe = getTimes(doe, **args)
+        finally:
+            remove(args['genStackPath'], None, **args)
+    else:
+        doe["time"] = None
+    doe.sort_values(by=["time"], inplace=True)
+    doe = getCost(doe)
+    res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour']].reset_index(drop=True)
+    if args.get("tablefmt", '') == 'csv':
+        print(res.to_csv(index=False))
+    else:
+        print(tabulate(res, headers='keys', tablefmt=args.get('tablefmt', 'psql'), showindex=False))
 
-    doe['costPerHour'] = doe.apply(configCostPerHour, axis=1)
-    doe['cost'] = doe.apply(funcCost, axis=1)
-    return doe
+    best = doe.iloc[0]
+    print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s and expect cost of {best.cost}")
+    return args, doe, stack
 
 def parseArgs():
     import argparse
@@ -280,12 +331,14 @@ def parseArgs():
                         help=f"Verbose output, helpful for debugging. Defaults to False")
     parser.add_argument("-lc", "--local", action=argparse.BooleanOptionalAction,
                         help=f"Will only run the function locally using faas-cli local-run")
-    parser.add_argument("-to", "--timeout", type=float,
-                        help=f"How long a function request will wait until existing and discounting it")
+    parser.add_argument("-to", "--timeout", type=float, default=120,
+                        help=f"How long a function request will wait until exiting and discounting it (applies to deploy and run steps)")
     parser.add_argument("-dry", "--dry-run", action=argparse.BooleanOptionalAction,
                         help=f"Dry run, will generate the stack_gen.yml file but will not run any function")
-    parser.add_argument("-tf", "--tablefmt", type=str,
+    parser.add_argument("-tf", "--tablefmt", type=str, default="csv",
                         help=f"Formats the output table in any suported format by the tabulate function. Defaults to psql")
+    parser.add_argument("-con", "--concurrency", type=int, default=30,
+                        help=f"How many functions can be running at one time.")
 
     args = parser.parse_args()
 
@@ -319,56 +372,7 @@ def parseArgs():
         print(f"finalArgs: {finalArgs}")
     return finalArgs
 
-def localMain(args):
-    # Generate a new stack file with new configs
-    doe, stack = generateFunctionConfigs(**args)
-    writeStack(stack, args['genStackPath'])
-    print(f"Generated {len(doe)} configurations, testing on local now")
-
-    doe = getTimes(doe, stackYml=args['genStackPath'], **args)
-    doe.sort_values(by=["time"], inplace=True)
-    print(tabulate(doe[['CPU','Mem','NodeTypeStr', 'time']].reset_index(drop=True), headers='keys', tablefmt='psql'))
-
-    best = doe.iloc[0]
-    print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s")
-    
-    # Clears up any docker instances
-    os.system("docker stop $(docker ps | grep fwatchdog | awk '{print $1}') > /dev/null 2>&1")
-    return args, doe, stack
-
-def remoteMain(args):
-    doe, stack = generateFunctionConfigs(**args)
-    writeStack(stack, args['genStackPath'])
-    print(f"Generated {len(doe)} configurations, testing on remote now")
-    if not args.get("dry_run"):
-        up(args['genStackPath'], **args)
-        
-        try:
-            doe = getTimes(doe, **args)
-        finally:
-            print("not removing functions for now")
-            # remove(args['genStackPath'], **args)
-    else:
-        doe["time"] = None
-    doe.sort_values(by=["time"], inplace=True)
-    doe = getCost(doe)
-    res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour']].reset_index(drop=True)
-    if args.get("tablefmt", '') == 'csv':
-        print(res.to_csv(index=False))
-    else:
-        print(tabulate(res, headers='keys', tablefmt=args.get('tablefmt', 'psql'), showindex=False))
-
-    best = doe.iloc[0]
-    print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s and expect cost of {best.cost}")
-    return args, doe, stack
-
-def main():
-    # Get arguments
-    args = parseArgs()
-    main = localMain if args.get('local', False) else remoteMain
-    main(args)
-
 if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore")
-    main()
+    remoteMain(parseArgs())

@@ -18,5 +18,4 @@ def handle(req):
 
     n = int(req)
     result = matmul(n)
-    print(result)
     return result
