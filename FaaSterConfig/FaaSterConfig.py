@@ -28,7 +28,8 @@ import time
 global_config_space = {
     'CPU': [.5,1,2],
     'Mem': [248, 1024, 1024*2],
-    'NodeType': ["NoGPU"]#["GPU1", "GPU2", "GPU3"]
+    'NodeType': ["c5.large"],
+    'nodePrepend': "node.kubernetes.io/instance-type=", # The prepended string for nodeTypes
 }
 def executeThreaded(func, args, max_workers=4):
     """Executes a function over a list of arguments in a threaded way 
@@ -148,6 +149,7 @@ def up(stackYml, funcs, verbose=False, waitUntilReady=False, **kwargs):
     result = runShell(cmd, handleLine)
     # print(f"result before waiting: {result}")
     if waitUntilReady:
+        start = datetime.now(timezone.utc)
         # wait until each function is up
         for funcName in funcs:
             def functionStatus():
@@ -157,8 +159,9 @@ def up(stackYml, funcs, verbose=False, waitUntilReady=False, **kwargs):
                 waitForResult(functionStatus, "Ready", kwargs.get('timeout', 120))
             except TimeoutError as ex:
                 return None
+        result = (datetime.now(timezone.utc) - start).total_seconds()
 
-    print(f"up completed for {stackYml} {' '.join(funcs) if funcs else ''}")
+    print(f"up completed for {stackYml} {' '.join(funcs) if funcs else ''} after : {result} sec")
 
     return result
 
@@ -181,11 +184,38 @@ def getCost(doe, **kwargs):
     Gets the cost given the runtime of the function assuming aws fargate on linux is used 
      https://aws.amazon.com/fargate/pricing/ 
     """
-    cpuPerHour = kwargs.get('cpuPerHour', 0.04048)
-    memPerHour = kwargs.get('memPerHour', 0.004445)
+    targetAverageUtilization = .8 # Assume to be 80% to simulate a real autoscaler 
+    nodePerHour = {
+        "m5.large": {
+            'cost': 0.096,
+            'cpu': 2,
+            'mem': 8,
+        },
+        "c5.large": {
+            'cost': 0.085,
+            'cpu': 2,
+            'mem': 4,
+        },
+        "r5.large": {
+            'cost': 0.126,
+            'cpu': 2,
+            'mem': 16,
+        }
+    }
+    cpuPerHour = {
+        "fargate": 0.04048
+    }
+    memPerHour = {
+        "fargate": 0.004445
+    }
+    for nt, p in nodePerHour.items():
+        # Cost per cpu/mem is normalized by number of resources times target utilization rate
+        cpuPerHour[nt] = p.get("cost") * .5/(p.get("cpu") * targetAverageUtilization)
+        memPerHour[nt] = p.get("cost") * .5/(p.get("mem") * targetAverageUtilization)
 
     def configCostPerHour(row):
-        return row.CPU*cpuPerHour + (row.Mem * memPerHour/1024)
+        nodeType = row.NodeTypeStr if row.NodeTypeStr in cpuPerHour else 'fargate' # Assume fargate if no node s
+        return row.CPU*cpuPerHour.get(nodeType) + (row.Mem * memPerHour.get(nodeType)/1024)
     
     def funcCost(row):
         if row.time is not None:
@@ -200,6 +230,9 @@ def getCost(doe, **kwargs):
 def genConfigs(config_space=None):
     if not config_space:
         config_space = global_config_space
+    config_space = config_space.copy()
+    del config_space['nodePrepend'] # nodePrepend is not a real variable, should be ignored here
+
     doe = build.full_fact(config_space)
     doe['i'] = doe.index + 1
     doe['NodeTypeStr'] = list(map(lambda nt: config_space['NodeType'][int(nt)], doe['NodeType']))
@@ -225,6 +258,9 @@ def generateFunctionConfigs(funcName, config_space=None, stackPath='../openFaas/
             "memory": f"{row.Mem}{memUnit}"
         }
         config['requests'] = config['limits'].copy()
+        config['limits']["constraints"] = [
+            config_space.get('nodePrepend', '') + row.NodeTypeStr
+        ]
         functions[name] = config
         funcNames.append(name)
     doe['funcName'] = funcNames
@@ -238,7 +274,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
         print(f"using data: {data}")
 
     # deploy function 
-    if not up(kwargs['genStackPath'], [funcName], waitUntilReady=True, verbose=verbose, **kwargs):
+    if not (st:= up(kwargs['genStackPath'], [funcName], waitUntilReady=True, verbose=verbose, **kwargs)):
         print(f"{funcName} failed to deploy")
         return None
 
@@ -264,7 +300,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
 
     remove(kwargs["genStackPath"], [funcName], verbose=verbose, **kwargs)
     print(f"Duration {duration} for {funcName}")
-    return duration
+    return duration, st
 
 
 def getTimes(doe, **kwargs):
@@ -283,7 +319,9 @@ def getTimes(doe, **kwargs):
     getTime = getLocalTime if kwargs.get('local', False) else getRemoteTime
 
     results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=kwargs.get("concurrency", 30))
-    doe['time'] = results
+    time,startupTime = zip(*results)
+    doe['time'] = time
+    doe['startupTime'] = startupTime
     return doe
 
 def remoteMain(args):
@@ -298,9 +336,10 @@ def remoteMain(args):
             remove(args['genStackPath'], None, **args)
     else:
         doe["time"] = None
+        doe["startupTime"] = None
     doe.sort_values(by=["time"], inplace=True)
     doe = getCost(doe)
-    res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour']].reset_index(drop=True)
+    res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour','startupTime']].reset_index(drop=True)
     if args.get("tablefmt", '') == 'csv':
         print(res.to_csv(index=False))
     else:
@@ -308,7 +347,13 @@ def remoteMain(args):
 
     best = doe.iloc[0]
     print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s and expect cost of {best.cost}")
-    return args, doe, stack
+    expCost = None
+    try:
+        expCost = (doe['costPerHour']/60 * doe['startupTime'].clip(lower=60) + doe['cost']).sum()
+        print(f"This experiment costed a total of: ${expCost}")
+    except Exception as ex:
+        print("Failed to compute experimental cost due to: {ex}")
+    return args, doe, stack, expCost
 
 def parseArgs():
     import argparse
@@ -325,6 +370,8 @@ def parseArgs():
                         help=f"The range of memory values to test for.Defaults to {global_config_space['Mem']}")
     parser.add_argument("-nt", "--nodeType", type=str, nargs="+",
                         help=f"The list of NodeTypes to test for. Defaults to {global_config_space['NodeType']}")
+    parser.add_argument("-np", "--nodePrepend", type=str, 
+                        help=f"The string prepended to nodeType when writing to stack.yml. Defaults to {global_config_space['nodePrepend']}")
     parser.add_argument("-d", "--data", type=str, default="1000",
                         help=f"The input data to pass to the function to get the estimated runtime")
     parser.add_argument("-v", "--verbose", action=argparse.BooleanOptionalAction,
@@ -345,7 +392,8 @@ def parseArgs():
     config_space = {
         'CPU': args.cpu or global_config_space.get("CPU"),
         'Mem': args.mem or global_config_space.get("Mem"),
-        'NodeType': args.nodeType or global_config_space.get("NodeType")
+        'NodeType': args.nodeType or global_config_space.get("NodeType"),
+        'nodePrepend': args.nodePrepend or global_config_space.get("nodePrepend"),
     }
 
     if not args.outStack:
