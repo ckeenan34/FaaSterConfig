@@ -179,11 +179,7 @@ def remove(stackYml, funcs, verbose=False, **kwargs):
 
     return True
 
-def getCost(doe, **kwargs):
-    """
-    Gets the cost given the runtime of the function assuming aws fargate on linux is used 
-     https://aws.amazon.com/fargate/pricing/ 
-    """
+def getPerHourCosts():
     targetAverageUtilization = .8 # Assume to be 80% to simulate a real autoscaler 
     nodePerHour = {
         "m5.large": {
@@ -212,7 +208,15 @@ def getCost(doe, **kwargs):
         # Cost per cpu/mem is normalized by number of resources times target utilization rate
         cpuPerHour[nt] = p.get("cost") * .5/(p.get("cpu") * targetAverageUtilization)
         memPerHour[nt] = p.get("cost") * .5/(p.get("mem") * targetAverageUtilization)
+    return cpuPerHour, memPerHour, nodePerHour
 
+def getCost(doe, **kwargs):
+    """
+    Gets the cost given the runtime of the function using either fargate or a specific node type
+    https://aws.amazon.com/ec2/pricing/on-demand/ https://aws.amazon.com/fargate/pricing/ 
+    If its a node, cost is estimated based on the cpu and mem limits relative to overall mem and cpu of the node
+    """
+    cpuPerHour, memPerHour, _ = getPerHourCosts()
     def configCostPerHour(row):
         nodeType = row.NodeTypeStr if row.NodeTypeStr in cpuPerHour else 'fargate' # Assume fargate if no node s
         return row.CPU*cpuPerHour.get(nodeType) + (row.Mem * memPerHour.get(nodeType)/1024)
@@ -340,19 +344,33 @@ def remoteMain(args):
     doe.sort_values(by=["time"], inplace=True)
     doe = getCost(doe)
     res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour','startupTime']].reset_index(drop=True)
+    csvData = res.to_csv(index=False)
     if args.get("tablefmt", '') == 'csv':
-        print(res.to_csv(index=False))
+        print(csvData)
     else:
         print(tabulate(res, headers='keys', tablefmt=args.get('tablefmt', 'psql'), showindex=False))
 
     best = doe.iloc[0]
-    print(f"Top Recommendation config: CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s and expect cost of {best.cost}")
+    rec = f"CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s and expect cost of {best.cost}"
+    print(f"Top Recommendation config: {rec}")
     expCost = None
     try:
         expCost = (doe['costPerHour']/60 * doe['startupTime'].clip(lower=60) + doe['cost']).sum()
-        print(f"This experiment costed a total of: ${expCost}")
+        print(f"This experiment costed an estimated total of: ${expCost}")
     except Exception as ex:
         print("Failed to compute experimental cost due to: {ex}")
+
+    if not args.get("dry_run"):
+        with open(f"results/FaaSterResults{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv",'w') as resFile:
+            meta = [f'#{string}\n' for string in ([
+                f"Function: {args.get('funcName')}",
+                f"Function argument(s): {args.get('data')}",
+                f"Experiment cost: ${expCost}",
+                f"Recommendation: {rec}"
+            ] + [
+                f"{rtype}: {args.get('config_space', {}).get(rtype)}" for rtype in ["CPU", "Mem", "NodeType"]
+            ])]
+            resFile.writelines(meta + [csvData])
     return args, doe, stack, expCost
 
 def parseArgs():
@@ -378,7 +396,7 @@ def parseArgs():
                         help=f"Verbose output, helpful for debugging. Defaults to False")
     parser.add_argument("-lc", "--local", action=argparse.BooleanOptionalAction,
                         help=f"Will only run the function locally using faas-cli local-run")
-    parser.add_argument("-to", "--timeout", type=float, default=120,
+    parser.add_argument("-to", "--timeout", type=float, default=60*5,
                         help=f"How long a function request will wait until exiting and discounting it (applies to deploy and run steps)")
     parser.add_argument("-dry", "--dry-run", action=argparse.BooleanOptionalAction,
                         help=f"Dry run, will generate the stack_gen.yml file but will not run any function")
