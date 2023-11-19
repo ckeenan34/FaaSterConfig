@@ -23,6 +23,7 @@ import re
 from tabulate import tabulate
 from datetime import datetime, timezone
 import time
+import sys
 
 # region Helpers
 global_config_space = {
@@ -253,7 +254,10 @@ def genConfigs(config_space=None):
     config_space = config_space.copy()
     del config_space['nodePrepend'] # nodePrepend is not a real variable, should be ignored here
 
+    config_space['CPU'] = np.array(config_space['CPU']).astype(np.float32)
+    config_space['Mem'] = np.array(config_space['Mem']).astype(np.float32)
     doe = build.full_fact(config_space)
+
     doe['i'] = doe.index + 1
     doe['NodeTypeStr'] = list(map(lambda nt: config_space['NodeType'][int(nt)], doe['NodeType']))
     return doe
@@ -270,12 +274,14 @@ def generateFunctionConfigs(funcName, config_space=None, stackPath='../openFaas/
     doe = genConfigs(config_space)
     funcNames = []
     for _, row in doe.iterrows():
-        name = f"{funcName}-cpu{row.CPU}-mem-{row.Mem}-{row.NodeTypeStr}".replace(".", "x").lower()
+        cpuStr = f"{row.CPU:.3f}"
+        memStr = f"{row.Mem:.3f}{"m" if kwargs.get("local", False) else "Mi"}"
+
+        name = f"{funcName}-cpu{cpuStr}-mem-{memStr}-{row.NodeTypeStr}".replace(".", "x").lower()
         config = funcConfig.copy()
-        memUnit = "m" if kwargs.get("local", False) else "Mi"
         config['limits'] = {
-            'cpu': row.CPU,
-            "memory": f"{row.Mem}{memUnit}"
+            'cpu': cpuStr,
+            "memory": memStr
         }
         config['requests'] = config['limits'].copy()
         config['limits']["constraints"] = [
@@ -361,10 +367,14 @@ def calcExperimentCost(secElapsed, prefix='node.kubernetes.io/instance-type='):
 
     _,_,nodePerHour = getPerHourCosts()
 
+    hourElapsed = (secElapsed+60)/3600
+
     cost = 0
     for node, count in nodeCounts.items():
-        cost += int(count) * nodePerHour[node]['cost'] * (secElapsed+60)/3600
+        cost += int(count) * nodePerHour[node]['cost'] * hourElapsed
 
+    # cost of eks during this time, assumes the cluster is only used for experiment 
+    cost += .1 * hourElapsed
     return cost
     
 def remoteMain(args):
@@ -373,14 +383,13 @@ def remoteMain(args):
 
     print(f"Generated {len(doe)} configurations, testing on remote now")
     start = datetime.now(timezone.utc)
-    if not args.get("dry_run"):        
-        try:
-            doe = getTimes(doe, **args)
-        finally:
-            remove(args['genStackPath'], None, **args)
-    else:
-        doe["time"] = None
-        doe["startupTime"] = None
+    if args.get("dry_run"):
+        print("skipping evaluation")
+        return 
+    try:
+        doe = getTimes(doe, **args)
+    finally:
+        remove(args['genStackPath'], None, **args)
 
     experimentTime = (datetime.now(timezone.utc) - start).total_seconds()
     print(f"Experiment took {experimentTime}s")
@@ -410,8 +419,9 @@ def remoteMain(args):
         print("Failed to compute experimental cost due to: {ex}")
 
     if not args.get("dry_run"):
-        with open(f"results/FaaSterResults{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv",'w') as resFile:
+        with open(f"results/FaaSterResults_{args.get('funcName')}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv",'w') as resFile:
             meta = [f'#{string}\n' for string in ([
+                f"Command: {' '.join(sys.argv)}"
                 f"Function: {args.get('funcName')}",
                 f"Function argument(s): {args.get('data')}",
                 f"Experiment cost: ${expCost}",
@@ -495,4 +505,4 @@ if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore")
     remoteMain(parseArgs())
-    # res = calcExperimentCost(5*60)
+    

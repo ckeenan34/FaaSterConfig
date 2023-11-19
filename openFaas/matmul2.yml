@@ -6,4 +6,4 @@ functions:
   matmul2:
     lang: python3
     handler: ./matmul
-    image: keenanc/matmul:latest
+    image: 017884733126.dkr.ecr.us-east-1.amazonaws.com/matmul:latest
