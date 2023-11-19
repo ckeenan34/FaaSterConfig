@@ -1,0 +1,15 @@
+# stack.yml
+
+provider:
+  name: openfaas
+  gateway: http://k8s-openfaas-gatewaye-2af26865ec-7018173b926ec015.elb.us-east-1.amazonaws.com:8080
+
+functions:
+  train-model:
+    lang: Dockerfile
+    handler: ./training
+    image: 017884733126.dkr.ecr.us-east-1.amazonaws.com/training:latest
+    environment:
+      write_debug: true
+
+

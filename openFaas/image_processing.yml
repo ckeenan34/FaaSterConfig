@@ -1,0 +1,11 @@
+version: 1.0
+provider:
+  name: openfaas
+  gateway: http://k8s-openfaas-gatewaye-2af26865ec-7018173b926ec015.elb.us-east-1.amazonaws.com:8080
+functions:
+  image-processing:
+    lang: python3
+    handler: ./image_processing
+    image: 017884733126.dkr.ecr.us-east-1.amazonaws.com/image_processing:latest
+    dependencies:
+      file: ./image_processing/requirements.txt

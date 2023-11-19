@@ -1,0 +1,6 @@
+[submodule "function-benchmarks"]
+	path = function-benchmarks
+	url = https://github.com/ddps-lab/serverless-faas-workbench.git
+[submodule "openFaas/openFaas/pigo-openfaas"]
+	path = openFaas/openFaas/pigo-openfaas
+	url = https://github.com/esimov/pigo-openfaas
