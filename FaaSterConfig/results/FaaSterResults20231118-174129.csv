@@ -1,9 +1,0 @@
-#Function: matmul2
-#Function argument(s): 10
-#Experiment cost: $0.03376890872953287
-#Recommendation: CPU :1.0, Mem: 514.0, NodeType: m5.large which had a final time of: 0.454234s and expect cost of 4.260292032877604e-06
-#CPU: [1.0]
-#Mem: [514.0]
-#NodeType: ['m5.large']
-CPU,Mem,NodeTypeStr,time,cost,costPerHour,startupTime
-1.0,514.0,m5.large,0.454234,4.260292032877604e-06,0.033764648437499996,3.359957

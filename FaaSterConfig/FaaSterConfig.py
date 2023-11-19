@@ -31,6 +31,16 @@ global_config_space = {
     'NodeType': ["c5.large"],
     'nodePrepend': "node.kubernetes.io/instance-type=", # The prepended string for nodeTypes
 }
+
+class Range(object):
+    '''Helper class for argparse range of values https://stackoverflow.com/questions/12116685/how-can-i-require-my-python-scripts-argument-to-be-a-float-in-a-range-using-arg
+    '''
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+    def __eq__(self, other):
+        return self.start <= other <= self.end
+
 def executeThreaded(func, args, max_workers=4):
     """Executes a function over a list of arguments in a threaded way 
 
@@ -144,7 +154,8 @@ def up(stackYml, funcs, verbose=False, waitUntilReady=False, **kwargs):
         if match:=re.search("Deployed. (\d+) Accepted.", line):
             return f"Deployed {match.groups()[0]}"
         if match:=re.search("failed to deploy", line):
-            raise Exception(f"Failed: {line}")
+            print(f"Failed: {line}")
+            return None
         
     result = runShell(cmd, handleLine)
     # print(f"result before waiting: {result}")
@@ -294,7 +305,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
     response = requests.post(url, data=data, timeout=kwargs.get('timeout', 120))
     
     if not response.ok:
-        print(f"{funcName} Response code: {response.status_code}")
+        print(f"{funcName} Response code: {response.status_code} due to: {response.reason}")
         return None,None
     elif verbose:
         print(response.content)
@@ -337,11 +348,18 @@ def getTimes(doe, **kwargs):
     doe['startupTime'] = startupTime
     return doe
 
+def calcTimeAndCost(doe, tradeoff):
+    def z(s):
+        return (s - s.mean())/s.std()
+    
+    return (1-tradeoff)*z(doe['time']) + z(doe['cost'])*tradeoff
+
 def remoteMain(args):
     doe, stack = generateFunctionConfigs(**args)
     writeStack(stack, args['genStackPath'])
 
     print(f"Generated {len(doe)} configurations, testing on remote now")
+    start = datetime.now(timezone.utc)
     if not args.get("dry_run"):        
         try:
             doe = getTimes(doe, **args)
@@ -350,9 +368,14 @@ def remoteMain(args):
     else:
         doe["time"] = None
         doe["startupTime"] = None
-    doe.sort_values(by=["time"], inplace=True)
+
+    experimentTime = (datetime.now(timezone.utc) - start).total_seconds()
+    print(f"Experiment took {experimentTime}s")
     doe = getCost(doe)
-    res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour','startupTime']].reset_index(drop=True)
+
+    doe['timeAndCost'] = calcTimeAndCost(doe, args.get("tradeoff"))
+    doe.sort_values(by=["timeAndCost"], inplace=True)
+    res = doe[['CPU','Mem','NodeTypeStr', 'time', 'cost', 'costPerHour', 'startupTime', 'timeAndCost']].reset_index(drop=True)
     csvData = res.to_csv(index=False)
     if args.get("tablefmt", '') == 'csv':
         print(csvData)
@@ -360,7 +383,10 @@ def remoteMain(args):
         print(tabulate(res, headers='keys', tablefmt=args.get('tablefmt', 'psql'), showindex=False))
 
     best = doe.iloc[0]
-    rec = f"CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time}s and expect cost of {best.cost}"
+    rec = f"CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time:.4f}s and expected cost of ${best.cost:.8f}, with a combined z of {best.timeAndCost:.3f}"
+    percNone = (res['time'].isnull().mean()) * 100
+    failuresStr = f"Failures: {percNone:.2f}%"
+    print(failuresStr)
     print(f"Top Recommendation config: {rec}")
     expCost = None
     try:
@@ -375,7 +401,9 @@ def remoteMain(args):
                 f"Function: {args.get('funcName')}",
                 f"Function argument(s): {args.get('data')}",
                 f"Experiment cost: ${expCost}",
-                f"Recommendation: {rec}"
+                f"Total time {experimentTime:5f}, tradeoff: ${args.get('tradeoff')}, timeout: ${args.get('timeout')}, concurrency: {args.get('concurrency')}",
+                f"Recommendation: {rec}",
+                failuresStr
             ] + [
                 f"{rtype}: {args.get('config_space', {}).get(rtype)}" for rtype in ["CPU", "Mem", "NodeType"]
             ])]
@@ -410,9 +438,11 @@ def parseArgs():
     parser.add_argument("-dry", "--dry-run", action=argparse.BooleanOptionalAction,
                         help=f"Dry run, will generate the stack_gen.yml file but will not run any function")
     parser.add_argument("-tf", "--tablefmt", type=str, default="csv",
-                        help=f"Formats the output table in any suported format by the tabulate function. Defaults to psql")
+                        help=f"Formats the output table in any supported format by the tabulate function. Defaults to psql")
     parser.add_argument("-con", "--concurrency", type=int, default=30,
                         help=f"How many functions can be running at one time.")
+    parser.add_argument("-trade", "--tradeoff", type=float, choices=[Range(0.0, 1.0)], default=.5,
+                        help=f"Tradeoff between time (0) and cost (1)")
 
     args = parser.parse_args()
 
