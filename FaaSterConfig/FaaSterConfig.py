@@ -196,6 +196,11 @@ def getPerHourCosts():
             'cost': 0.126,
             'cpu': 2,
             'mem': 16,
+        },
+        "c7g.large": {
+            'cost': 0.0723,
+            'cpu': 2,
+            'mem': 4,
         }
     }
     cpuPerHour = {
@@ -280,7 +285,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
     # deploy function 
     if not (st:= up(kwargs['genStackPath'], [funcName], waitUntilReady=True, verbose=verbose, **kwargs)):
         print(f"{funcName} failed to deploy")
-        return None
+        return None,None
 
     # Run function 
     start = datetime.now(timezone.utc)
@@ -290,7 +295,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
     
     if not response.ok:
         print(f"{funcName} Response code: {response.status_code}")
-        return None
+        return None,None
     elif verbose:
         print(response.content)
     
@@ -323,6 +328,10 @@ def getTimes(doe, **kwargs):
     getTime = getLocalTime if kwargs.get('local', False) else getRemoteTime
 
     results = executeThreaded(getTime, doe.itertuples(index=False), max_workers=kwargs.get("concurrency", 30))
+    if kwargs.get("verbose", False):
+        if not results:
+            raise "Results was empty"
+        print(f"results length: {len(results)}")
     time,startupTime = zip(*results)
     doe['time'] = time
     doe['startupTime'] = startupTime
