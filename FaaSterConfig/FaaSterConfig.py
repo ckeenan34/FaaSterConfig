@@ -354,6 +354,19 @@ def calcTimeAndCost(doe, tradeoff):
     
     return (1-tradeoff)*z(doe['time']) + z(doe['cost'])*tradeoff
 
+def calcExperimentCost(secElapsed, prefix='node.kubernetes.io/instance-type='):
+    cmd = f"kubectl get nodes --show-labels | awk '{{print $6}}' | tr ',' '\n' | grep '{prefix}' | sort | uniq -c"
+
+    nodeCounts = dict([(y[1].replace(prefix,''), y[0]) for y in [x.strip().split(" ") for x in runShell(cmd).split("\n")]])
+
+    _,_,nodePerHour = getPerHourCosts()
+
+    cost = 0
+    for node, count in nodeCounts.items():
+        cost += int(count) * nodePerHour[node]['cost'] * (secElapsed+60)/3600
+
+    return cost
+    
 def remoteMain(args):
     doe, stack = generateFunctionConfigs(**args)
     writeStack(stack, args['genStackPath'])
@@ -390,7 +403,8 @@ def remoteMain(args):
     print(f"Top Recommendation config: {rec}")
     expCost = None
     try:
-        expCost = (doe['costPerHour']/60 * doe['startupTime'].clip(lower=60) + doe['cost']).sum()
+        # expCost = (doe['costPerHour']/60 * doe['startupTime'].clip(lower=60) + doe['cost']).sum()
+        expCost = calcExperimentCost(experimentTime)
         print(f"This experiment costed an estimated total of: ${expCost}")
     except Exception as ex:
         print("Failed to compute experimental cost due to: {ex}")
@@ -481,3 +495,4 @@ if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore")
     remoteMain(parseArgs())
+    # res = calcExperimentCost(5*60)
