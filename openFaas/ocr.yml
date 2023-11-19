@@ -1,0 +1,10 @@
+provider:
+  name: openfaas
+  gateway: http://k8s-openfaas-gatewaye-2af26865ec-7018173b926ec015.elb.us-east-1.amazonaws.com:8080
+
+functions:
+  openfaas-ocr:
+    lang: python3
+    handler: ./ocr
+    # image: viveksyngh/openfaas-ocr:0.3.0
+    image: mbilalce/ocr:0.1.0
