@@ -1,0 +1,11 @@
+#Command: ./FaaSterConfig.py ../openFaas/ocr.yml -d https://www.pyimagesearch.com/wp-content/uploads/2017/06/tesseract_header.jpg -nt m5.large -c 1.5 -m 3000 -to 60 -con 10 -vFunction: openfaas-ocr
+#Function argument(s): https://www.pyimagesearch.com/wp-content/uploads/2017/06/tesseract_header.jpg
+#Experiment cost: $0.03327765538066667
+#Total time 14.078382, tradeoff: $0.5, timeout: $60.0, concurrency: 10
+#Recommendation: CPU :1.5, Mem: 3000.0, NodeType: m5.large which had a final time of: 1.2164s and expected cost of $0.00002263, with a combined z of nan
+#Failures: 0.00%
+#CPU: [1.5]
+#Mem: [3000.0]
+#NodeType: ['m5.large']
+CPU,Mem,NodeTypeStr,time,cost,costPerHour,startupTime,timeAndCost
+1.5,3000.0,m5.large,1.216358,2.262853505859375e-05,0.06697265625,10.084385,

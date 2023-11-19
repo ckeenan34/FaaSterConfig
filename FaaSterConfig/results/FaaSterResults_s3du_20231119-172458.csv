@@ -1,0 +1,11 @@
+#Command: ./FaaSterConfig.py ../openFaas/s3.yml -d {"input_bucket": "inputbucketbenchmark","object_key": "amzn_fine_food_reviews/reviews100mb.csv","output_bucket":"outputbucketbenchmark"} -nt r5.large -c 1 -m 2048 -to 60 -con 10Function: s3du
+#Function argument(s): {"input_bucket": "inputbucketbenchmark","object_key": "amzn_fine_food_reviews/reviews100mb.csv","output_bucket":"outputbucketbenchmark"}
+#Experiment cost: $0.03199552709166667
+#Total time 11.224275, tradeoff: $0.5, timeout: $60.0, concurrency: 10
+#Recommendation: CPU :1.0, Mem: 2048.0, NodeType: r5.large which had a final time of: 3.3146s and expected cost of $0.00004532, with a combined z of nan
+#Failures: 0.00%
+#CPU: [1.0]
+#Mem: [2048.0]
+#NodeType: ['r5.large']
+CPU,Mem,NodeTypeStr,time,cost,costPerHour,startupTime,timeAndCost
+1.0,2048.0,r5.large,3.314609,4.5316919921875e-05,0.04921875,5.625423,

@@ -29,7 +29,12 @@ import sys
 global_config_space = {
     'CPU': [.5,1,2],
     'Mem': [248, 1024, 1024*2],
-    'NodeType': ["c5.large"],
+    'NodeType': [
+        "m5.large",
+        "c5.large",
+        "r5.large",
+        "c7g.large"
+    ],
     'nodePrepend': "node.kubernetes.io/instance-type=", # The prepended string for nodeTypes
 }
 
@@ -275,7 +280,7 @@ def generateFunctionConfigs(funcName, config_space=None, stackPath='../openFaas/
     funcNames = []
     for _, row in doe.iterrows():
         cpuStr = f"{row.CPU:.3f}"
-        memStr = f"{row.Mem:.3f}{"m" if kwargs.get("local", False) else "Mi"}"
+        memStr = f"{row.Mem:.3f}{'m' if kwargs.get('local', False) else 'Mi'}"
 
         name = f"{funcName}-cpu{cpuStr}-mem-{memStr}-{row.NodeTypeStr}".replace(".", "x").lower()
         config = funcConfig.copy()
@@ -405,6 +410,9 @@ def remoteMain(args):
         print(tabulate(res, headers='keys', tablefmt=args.get('tablefmt', 'psql'), showindex=False))
 
     best = doe.iloc[0]
+    if not best.time:
+        print("Something failed, best time was empty, exiting")
+        return
     rec = f"CPU :{best.CPU}, Mem: {best.Mem}, NodeType: {best.NodeTypeStr} which had a final time of: {best.time:.4f}s and expected cost of ${best.cost:.8f}, with a combined z of {best.timeAndCost:.3f}"
     percNone = (res['time'].isnull().mean()) * 100
     failuresStr = f"Failures: {percNone:.2f}%"

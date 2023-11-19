@@ -1,0 +1,11 @@
+#Command: ./FaaSterConfig.py ../openFaas/matmul.yml -d 2500 -nt r5.large -c 1 -m 2304 -to 120 -con 10Function: matmul
+#Function argument(s): 2500
+#Experiment cost: $0.050869616727222226
+#Total time 53.239315, tradeoff: $0.5, timeout: $120.0, concurrency: 10
+#Recommendation: CPU :1.0, Mem: 2304.0, NodeType: r5.large which had a final time of: 1.6412s and expected cost of $0.00002300, with a combined z of nan
+#Failures: 0.00%
+#CPU: [1.0]
+#Mem: [2304.0]
+#NodeType: ['r5.large']
+CPU,Mem,NodeTypeStr,time,cost,costPerHour,startupTime,timeAndCost
+1.0,2304.0,r5.large,1.641175,2.2998887939453124e-05,0.05044921875,50.31229,
