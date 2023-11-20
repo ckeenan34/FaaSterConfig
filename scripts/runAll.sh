@@ -11,16 +11,16 @@ matmulInputs=(10 1000 5000)
 set -o xtrace
 for mi in "${matmulInputs[@]}";
 do
-  ./FaaSterConfig.py ../openFaas/matmul2.yml -d $mi $sArgs $extraArgs
-  ./FaaSterConfig.py ../openFaas/matmul2.yml -d $mi $mArgs $extraArgs
-  # ./FaaSterConfig.py ../openFaas/matmul2.yml -d $mi $lArgs $extraArgs
+  # ./FaaSterConfig.py ../openFaas/matmul2.yml -d $mi $sArgs $extraArgs #complete
+  # ./FaaSterConfig.py ../openFaas/matmul2.yml -d $mi $mArgs $extraArgs #complete
+  ./FaaSterConfig.py ../openFaas/matmul2.yml -d $mi $lArgs $extraArgs
   # ./FaaSterConfig.py ../openFaas/matmul2.yml -d $mi $xlArgs $extraArgs
 done
 
-# ./FaaSterConfig.py ../openFaas/image_processing.yml -d https://raw.githubusercontent.com/MBtech/rethinking-serverless/main/benchmarks/face-detection/pigo-openfaas/samples/nasa.jpg $mArgs $extraArgs
+# ./FaaSterConfig.py ../openFaas/image_processing.yml -d https://raw.githubusercontent.com/MBtech/rethinking-serverless/main/benchmarks/face-detection/pigo-openfaas/samples/nasa.jpg $mArgs $extraArgs #complete
+# ./FaaSterConfig.py ../openFaas/image_processing.yml -d https://raw.githubusercontent.com/MBtech/rethinking-serverless/main/benchmarks/face-detection/pigo-openfaas/samples/nasa.jpg $sArgs $extraArgs #complete
 # ./FaaSterConfig.py ../openFaas/ocr.yml -d https://www.pyimagesearch.com/wp-content/uploads/2017/06/tesseract_header.jpg $mArgs $extraArgs
 # ./FaaSterConfig.py ../openFaas/s3.yml -d '{"input_bucket": "inputbucketbenchmark","object_key": "amzn_fine_food_reviews/reviews100mb.csv","output_bucket":"outputbucketbenchmark"}' $mArgs $extraArgs
-./FaaSterConfig.py ../openFaas/image_processing.yml -d https://raw.githubusercontent.com/MBtech/rethinking-serverless/main/benchmarks/face-detection/pigo-openfaas/samples/nasa.jpg $sArgs $extraArgs
 # ./FaaSterConfig.py ../openFaas/ocr.yml -d https://www.pyimagesearch.com/wp-content/uploads/2017/06/tesseract_header.jpg $sArgs $extraArgs
 # ./FaaSterConfig.py ../openFaas/s3.yml -d '{"input_bucket": "inputbucketbenchmark","object_key": "amzn_fine_food_reviews/reviews100mb.csv","output_bucket":"outputbucketbenchmark"}' $sArgs $extraArgs
 

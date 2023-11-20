@@ -26,6 +26,9 @@ FaaSterConfig/results/FaaSterResults_matmul2_20231119-160223.csv
 # Image_processing
 ./FaaSterConfig.py ../openFaas/image_processing.yml -d  https://raw.githubusercontent.com/MBtech/rethinking-serverless/main/benchmarks/face-detection/pigo-openfaas/samples/nasa.jpg -nt r5.large  -c 2 -m 2048 -to 60 -con 10
 
+S: FaaSterResults_image-processing_20231119-200655.csv
+M: FaaSterResults_image-processing_20231119-184711.csv
+
 # Ocr 
 ./FaaSterConfig.py ../openFaas/ocr.yml -d https://www.pyimagesearch.com/wp-content/uploads/2017/06/tesseract_header.jpg -nt m5.large  -c 1.5 -m 3000 -to 60 -con 10 -v
 
