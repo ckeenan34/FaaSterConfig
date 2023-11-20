@@ -316,7 +316,7 @@ def runFunction(funcName, baseUrl, data, verbose=False, **kwargs):
     response = requests.post(url, data=data, timeout=kwargs.get('timeout', 120))
     
     if not response.ok:
-        print(f"{funcName} Response code: {response.status_code} due to: {response.reason}")
+        print(f"{funcName} Response code: {response.status_code} due to: {response.reason}, {response.content}")
         return None,None
     elif verbose:
         print(response.content)

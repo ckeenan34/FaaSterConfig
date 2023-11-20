@@ -17,7 +17,9 @@
 -c 0.1 0.9 1.7 -m 256.0 2304.0
 
 # Matmul 
-./FaaSterConfig.py ../openFaas/matmul2.yml -d 1000 -nt r5.large  -c 1 -m 500  -to 60 -con 10
+original large run: 
+FaaSterConfig/results/FaaSterResults_matmul2_20231119-160223.csv
+
 
 
 
