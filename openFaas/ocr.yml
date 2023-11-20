@@ -4,7 +4,8 @@ provider:
 
 functions:
   openfaas-ocr:
-    lang: python3
+    lang: dockerfile
     handler: ./ocr
     # image: viveksyngh/openfaas-ocr:0.3.0
-    image: mbilalce/ocr:0.1.0
+    image: 017884733126.dkr.ecr.us-east-1.amazonaws.com/ocr:latest
+    # mbilalce/ocr:0.1.0

@@ -7,6 +7,6 @@ functions:
   s3du:
     lang: python3
     handler: ./s3
-    image: mbilalce/openfaas-s3:latest
+    image: 017884733126.dkr.ecr.us-east-1.amazonaws.com/s3:latest
     environment:
       AWS_REGION: "us-east-1"

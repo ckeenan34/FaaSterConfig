@@ -1,0 +1,11 @@
+FROM python:3.8-alpine
+
+# Install Tesseract
+RUN apk --no-cache add tesseract-ocr
+
+# Install Python dependencies
+WORKDIR /app
+COPY . /app
+RUN pip install --no-cache-dir -r requirements.txt
+
+CMD ["python", "./ocr/handler.py"]
