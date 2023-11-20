@@ -6,6 +6,7 @@ except ImportError as e:
 import io
 import pytesseract
 import urllib.request
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 import os
 from uuid import uuid4
 from urllib.parse import urlparse
@@ -13,7 +14,7 @@ from os.path import splitext
 import base64
 import binascii
 
-
+print("PATH:", os.environ.get("PATH"))
 ALLOWED_IMAGE_TYPE = [".jpeg", ".png", ".jpg"]
 
 def get_ext(url):

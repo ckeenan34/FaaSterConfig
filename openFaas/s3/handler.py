@@ -1,22 +1,24 @@
 import os
 import boto3
+import json
 from time import time
 
 s3_client = boto3.client('s3')
 
-def s3du(event, context):
-    print("hello")
+def handle(event):
     try:
         # Your function logic here
+        event_data = json.loads(event)
 
-        input_bucket = event['input_bucket']
-        object_key = event['object_key']
-        output_bucket = event['output_bucket']
-        print(input_bucket)
-        print(object_key)
-        print(output_bucket)
+        input_bucket = event_data['input_bucket']
+        object_key = event_data['object_key']
+        output_bucket = event_data['output_bucket']
+        
+        # Replace slashes with underscores in the object key
+        sanitized_object_key = object_key.replace('/', '_')
 
-        path = '/tmp/' + object_key
+
+        path = '/tmp/' + sanitized_object_key
 
         start = time()
         s3_client.download_file(input_bucket, object_key, path)
@@ -30,5 +32,5 @@ def s3du(event, context):
 
         return {"download_time": download_time, "upload_time": upload_time}
     except Exception as e:
-        logging.error(f"Error during function execution: {str(e)}")
+        print(f"Error during function execution: {str(e)}")
         raise
