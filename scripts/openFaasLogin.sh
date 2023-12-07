@@ -1,1 +1,2 @@
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 017884733126.dkr.ecr.us-east-1.amazonaws.com
 echo $PASSWORD | faas-cli login --username admin --password-stdin -g http://$OPENFAAS_URL
