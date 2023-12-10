@@ -33,10 +33,10 @@ global_config_space = {
     'CPU': [.5,1,2],
     'Mem': [248, 1024, 1024*2],
     'NodeType': [
-        "m5.large",
         "c5.large",
         "r5.large",
-        "c7g.large"
+        "c7g.large",
+        "m5.large"
     ],
     'nodePrepend': "node.kubernetes.io/instance-type=", # The prepended string for nodeTypes
 }
@@ -215,11 +215,8 @@ def remove(stackYml, funcs, verbose=False, **kwargs):
         print(out)
 
     if funcs is not None:
-        print('funcs type',type(funcs))
-        print('funcs',funcs)
-        
+        #time.sleep(1)
         funcName = funcs[0]
-        print('!!! funcName is', funcName)
         status = "Not"
         while True:
             cmd = f"faas-cli describe -f {kwargs['genStackPath']} {funcName} | awk '/Status:/ {{print $2}}'"
@@ -227,14 +224,11 @@ def remove(stackYml, funcs, verbose=False, **kwargs):
             (out, err) = process.communicate()
             try:
                 status = out.strip()
-                print(status)
-                print(err)
             finally:
                 if not process.poll():
                     process.kill()
             if status != 'Not':
                 break
-            time.sleep(1)
 
 
 def getPerHourCosts():
@@ -393,6 +387,7 @@ def getTimeHyperoptObjective(x, doe, args, trials, space):
             if x == space_eval(space, rval):
                 counter += 1
     if counter > 0:
+        # hyperopt will not integrate failed outcome
         return {
             'status': STATUS_FAIL,
             }
@@ -428,15 +423,17 @@ def getTimeHyperoptObjective(x, doe, args, trials, space):
     if kwargs.get("verbose", False): 
         print('in getTimesHyperoptObjective doe is: ', doe)
 
+    getCost(doe)
+    cost = doe.loc[row_i, "cost"]
     # hyperopt will not integrate failed outcome
     if not time:
-        print('in hyperopt return failed function')
         return {
+            'loss': 99,
             'status': STATUS_FAIL,
             }
     
     return {
-        'loss': time,
+        'loss': cost,
         'status': STATUS_OK,
         # -- store other results like this
         #'doe': doe
@@ -494,7 +491,7 @@ def calcExperimentCost(secElapsed, prefix='node.kubernetes.io/instance-type='):
 def getHyperoptParams(config_space):
     #max_evals = round(hyperoptEvals * doe.shape[0])
     space = {'CPU' : hp.quniform('CPU_uniform', min(config_space['CPU']), max(config_space['CPU']), 0.1),
-         'Mem': hp.choice('Mem_choice', config_space['Mem']),
+         'Mem': hp.quniform('Mem_uniform',  min(config_space['Mem']), max(config_space['Mem']), 256.0),
          'NodeTypeStr': hp.choice('Node_choice', config_space['NodeType'])}
     return space
 
@@ -526,7 +523,7 @@ def remoteMain(args):
 
             best = fmin(fmin_objective,
             space=space,
-            algo=tpe.suggest,
+            algo=partial(tpe.suggest, n_startup_jobs=6),
             max_evals=hyperoptEvals,
             trials=trials)
 
